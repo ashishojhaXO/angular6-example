@@ -49,6 +49,8 @@ class FuncTestGen {
    *  then, sets the given props, params, maps from the expressinns
    */
   setMockData (node, mockData, returnValue) { // node: ExpressionStatement
+    // Util.clog("fn setMOCKDATA: ", node, mockData, returnValue );
+
     if (!node) return;
 
     Util.DEBUG && console.log('    *** EXPRESSION ' + node.type + ' ***', this.getCode(node));

@@ -17,6 +17,7 @@ const DirectiveTestGen = require('./src/directive/directive-test-gen.js');
 const InjectableTestGen = require('./src/injectable/injectable-test-gen.js');
 const PipeTestGen = require('./src/pipe/pipe-test-gen.js');
 const ClassTestGen = require('./src/class/class-test-gen.js');
+const { createLogicalAnd } = require('typescript');
 
 const argv = yargs.usage('Usage: $0 <tsFile> [options]')
   .options({
@@ -65,6 +66,10 @@ function loadConfig(filePath) {
 }
 
 function getFuncMockData (Klass, funcName, funcType) {
+  // Util.clog("funcTestGen Klass: ", Klass, );
+  // Util.clog("funcTestGen funcName: ", funcName, );
+  // Util.clog("funcTestGen funcType : ", funcType );
+
   const funcTestGen = new FuncTestGen(Klass, funcName, funcType);
   const funcMockData = {
     isAsync: funcTestGen.isAsync,
@@ -73,11 +78,17 @@ function getFuncMockData (Klass, funcName, funcType) {
     map: {},
     globals: {}
   };
+
+
   funcTestGen.getExpressionStatements().forEach((expr, ndx) => {
     const code = funcTestGen.classCode.substring(expr.start, expr.end);
     Util.DEBUG && console.log('  *** EXPRESSION ***', ndx, code.replace(/\n+/g, '').replace(/\s+/g, ' '));
     funcTestGen.setMockData(expr, funcMockData);
   });
+
+  // Util.clog("funcTestGen: ", funcTestGen );
+  // Util.clog("funcMockData: ", funcMockData);
+  // Util.clog("\n" );
 
   return funcMockData;
 }
@@ -94,25 +105,56 @@ function getTestGenerator (tsPath, config) {
   return testGenerator;
 }
 
+// NOTE: TODO: HERE: THIS is the REAL DEAL
 function getFuncTest(Klass, funcName, funcType, angularType) {
+  // console.log("-----------HERE--------");
+
   Util.DEBUG &&
     console.log('\x1b[36m%s\x1b[0m', `\nPROCESSING #${funcName}`);
 
   const funcMockData = getFuncMockData(Klass, funcName, funcType);
+
+  // Util.clog("funcMockData: ", funcMockData  );
+
   const [allFuncMockJS, asserts] = Util.getFuncMockJS(funcMockData, angularType);
+  // Util.clog("allFuncMockJS : ", allFuncMockJS );
+  // Util.clog("asserts: ", asserts);
+
   const funcMockJS = [...new Set(allFuncMockJS)];
+  // Util.clog("funcMockJS : ", funcMockJS );
   const funcParamJS = Util.getFuncParamJS(funcMockData.params);
+  // Util.clog("funcParamJS : ", funcParamJS );
 
   const funcAssertJS = asserts.map(el => `// expect(${el.join('.')}).toHaveBeenCalled()`);
+  // Util.clog("funcAssertJS : ", funcAssertJS );
+
+  // ORI
+  // 1
+  // const jsToRun = 
+  //   funcType === 'set' ? `${angularType}.${funcName} = ${funcParamJS || '{}'}`: 
+  //   funcType === 'get' ? `const ${funcName} = ${angularType}.${funcName}` : 
+  //   `${angularType}.${funcName}(${funcParamJS})`;
+  // ORI-
+  // ADD
+  // 1
   const jsToRun = 
-    funcType === 'set' ? `${angularType}.${funcName} = ${funcParamJS || '{}'}`: 
-    funcType === 'get' ? `const ${funcName} = ${angularType}.${funcName}` : 
-    `${angularType}.${funcName}(${funcParamJS})`;
+    funcType === 'set' ? `(${angularType} as any).${funcName} = ${funcParamJS || '[]'}`: 
+    funcType === 'get' ? `const ${funcName} = (${angularType} as any).${funcName}` : 
+    `( ${angularType} as any).${funcName}(${funcParamJS})`;
+  // ADD-
+
+  // Util.clog("jsToRun : ", jsToRun );
+
   const itBlockName = 
     funcType === 'method' ? `should run #${funcName}()` : 
     funcType === 'get' ? `should run GetterDeclaration #${funcName}` :
     funcType === 'set' ? `should run SetterDeclaration #${funcName}` : '';
+
+  // Util.clog("itBlockName : ", itBlockName );
+
   const asyncStr = funcMockData.isAsync ? 'await ' : '';
+
+  // Util.clog("asyncStr : ", asyncStr );
 
   return `
     it('${itBlockName}', async () => {
@@ -122,6 +164,7 @@ function getFuncTest(Klass, funcName, funcType, angularType) {
     });
     `;
 }
+// NOTE: TODO: HERE: THIS is the REAL DEAL-
 
 function run (tsFile) {
   try {
@@ -158,13 +201,19 @@ function run (tsFile) {
     })
 
     const modjule = requireFromString(replacedOutputText);
+    // Util.clog("modjule: ", modjule);
     const Klass = modjule[ejsData.className];
+    // Util.clog("Klass: ", modjule);
     Util.DEBUG &&
       console.warn('\x1b[36m%s\x1b[0m', `PROCESSING ${Klass.ctor && Klass.ctor.name} constructor`);
     const ctorMockData = getFuncMockData(Klass, 'constructor', 'constructor');
 
+    // Util.clog("ctorMockData : ", ctorMockData);
+
     const ctorParamJs = Util.getFuncParamJS(ctorMockData.params);
+    // Util.clog("ctorParamJs : ", ctorParamJs );
     ejsData.ctorParamJs = Util.indent(ctorParamJs, ' '.repeat(6)).trim();
+    // Util.clog("ejsData: ", ejsData);
     ejsData.providerMocks = testGenerator.getProviderMocks(ctorMockData.params);
     // for (var key in ejsData.providerMocks) {
     //   ejsData.providerMocks[key] = Util.indent(ejsData.providerMocks[key]).replace(/\{\s+\}/gm, '{}');
@@ -176,17 +225,34 @@ function run (tsFile) {
       ejsData.accessorTests[`${setterName} SetterDeclaration`] =
         Util.indent(getFuncTest(Klass, setterName, 'set', angularType), '  ');
     });
+    // Util.Util.clog("ejsData Setter: ", ejsData);
     testGenerator.klassGetters.forEach(getter => {
       const getterName = getter.node.name.escapedText;
       ejsData.accessorTests[`${getterName} GetterDeclaration`] =
         Util.indent(getFuncTest(Klass, getterName, 'get', angularType), '  ');
     });
+    // Util.clog("ejsData Getter: ", ejsData);
 
     testGenerator.klassMethods.forEach(method => {
       const methodName = method.node.name.escapedText;
       try {
+        // ORI
+        // ejsData.functionTests[methodName] =
+        //   Util.indent(getFuncTest(Klass, methodName, 'method', angularType), '  ');
+        // ORI-
+
+        // ADD
         ejsData.functionTests[methodName] =
-          Util.indent(getFuncTest(Klass, methodName, 'method', angularType), '  ');
+          Util.indent(
+            getFuncTest(Klass, methodName, 'method', angularType)
+            , 
+            '  '
+            );
+        // ADD-
+
+        // Util.clog("try: ", methodName, );
+        // Util.clog("try ejsData.functionTests[methodName]: ", ejsData.functionTests[methodName]);
+
       } catch (e) {
         const msg = '    // '+ e.stack;
         const itBlock = `it('should run #${method.name}()', async () => {\n` +
@@ -194,14 +260,24 @@ function run (tsFile) {
           `  });\n`
         ejsData.functionTests[methodName] = itBlock;
         errors.push(e);
+        
+        // Util.clog("catch: ", methodName );
+        // Util.clog("catch: ", errors );
+        // Util.clog("catch: ", itBlock);
       }
     });
+
+    // Util.clog("ejsData functionTESTS: ", ejsData);
 
     // console.log('..................................................................')
     // console.log(ejsData)
     // console.log('..................................................................')
     const generated = testGenerator.getGenerated(ejsData, argv);
     generated && testGenerator.writeGenerated(generated, argv);
+
+    // Util.clog("argv: ", argv);
+    // Util.clog("generated : ", generated );
+    // Util.clog("testGenerator: ", testGenerator);
 
     errors.forEach( e => console.error(e) );
   } catch (e) {
