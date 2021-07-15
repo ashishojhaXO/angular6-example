@@ -1,0 +1,8 @@
+ng-spec-gen:
+
+angular-spec-generator src/app/service
+
+ngentest:
+
+src/libs/external/ngentest/index.js -v -framework karma -s src/app/service                                                          [2:01:11]
+
