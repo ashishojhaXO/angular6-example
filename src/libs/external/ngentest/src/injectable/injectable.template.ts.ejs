@@ -7,10 +7,10 @@ import { Observable, of as observableOf, throwError } from 'rxjs';
 <%- providerMocks.mocks.join('\n') %>
 
 describe('<%- className %>', () => {
-  let service;
+  let service: <%- className %>;
 
   beforeEach(() => {
-    service = new <%- className %>(<%- ctorParamJs %>);
+    // service = new <%- className %>(<%- ctorParamJs %>);
   });
 
   <% for(var key in functionTests) { -%>
